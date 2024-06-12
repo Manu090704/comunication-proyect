@@ -1,167 +1,209 @@
 #include <iostream>
 #include <fstream>
 #include <vector>
-#include <sstream>
-#include <iomanip>
-#include "customer.h"
+#include "bill.h"
 #include "operator.h"
 #include "vox.h"
 #include "internet.h"
-#include "bill.h"
+#include "customer.h"
 
-void readInputFile(const std::string& filename, std::vector<Customer*>& Customers, std::vector<Operator*>& Operators, int& numEvents, std::vector<std::string>& events) {
-    std::ifstream infile(filename.c_str());
-    if (!infile.is_open()) {
-        std::cerr << "Error: No se pudo abrir el archivo de entrada." << std::endl;
-        exit(EXIT_FAILURE);
-    }
-
-    int numCustomers, numOperators;
-    infile >> numCustomers >> numOperators >> numEvents;
-    events.resize(numEvents);
-    infile.ignore();  // Para ignorar el resto de la línea después de leer los números iniciales.
-
-    for (int i = 0; i < numEvents; ++i) {
-        std::getline(infile, events[i]);
-    }
-
-    infile.close();
-}
-
-void writeOutputFile(const std::string& filename, const std::vector<Customer*>& Customers, const std::vector<Operator*>& Operators) {
-    std::ofstream outfile(filename.c_str());
-    if (!outfile.is_open()) {
-        std::cerr << "Error: No se pudo abrir el archivo de salida." << std::endl;
-        exit(EXIT_FAILURE);
-    }
-
-    // Imprimir información de los operadores
-    for (size_t i = 0; i < Operators.size(); ++i) {
-        outfile << "Operator " << Operators[i]->getId() << ": "
-                << Operators[i]->getTotalSpentTalkingTime() << " "
-                << Operators[i]->getTotalMessageSent() << " "
-                << std::fixed << std::setprecision(2) << Operators[i]->getTotalInternetUsage() << std::endl;
-    }
-
-    // Imprimir información de los clientes
-    for (size_t i = 0; i < Customers.size(); ++i) {
-        outfile << "Customer " << Customers[i]->getId() << ": "
-                << std::fixed << std::setprecision(2) << Customers[i]->getBill()->getTotalMoneySpent() << " "
-                << Customers[i]->getBill()->getCurrentDebt() << std::endl;
-    }
-
-    // Encontrar y escribir el cliente que más ha hablado
-    int maxTalkingTime = -1;
-    Customer* topTalker = 0;
-    for (size_t i = 0; i < Customers.size(); ++i) {
-        if (Customers[i]->getTotalSpentTalkingTime() > maxTalkingTime) {
-            maxTalkingTime = Customers[i]->getTotalSpentTalkingTime();
-            topTalker = Customers[i];
-        }
-    }
-    outfile << topTalker->getName() << ": " << maxTalkingTime << std::endl;
-
-    // Encontrar y escribir el cliente que más mensajes ha enviado
-    int maxMessagesSent = -1;
-    Customer* topMessenger = 0;
-    for (size_t i = 0; i < Customers.size(); ++i) {
-        if (Customers[i]->getTotalMessageSent() > maxMessagesSent) {
-            maxMessagesSent = Customers[i]->getTotalMessageSent();
-            topMessenger = Customers[i];
-        }
-    }
-    outfile << topMessenger->getName() << ": " << maxMessagesSent << std::endl;
-
-    // Encontrar y escribir el cliente que más ha usado Internet
-    double maxInternetUsage = -1.0;
-    Customer* topInternetUser = 0;
-    for (size_t i = 0; i < Customers.size(); ++i) {
-        if (Customers[i]->getTotalInternetUsage() > maxInternetUsage) {
-            maxInternetUsage = Customers[i]->getTotalInternetUsage();
-            topInternetUser = Customers[i];
-        }
-    }
-    outfile << topInternetUser->getName() << ": " << maxInternetUsage << std::endl;
-
-    outfile.close();
-}
+using namespace std;
 
 int main(int argc, char* argv[]) {
-    if (argc < 3) {
-        std::cerr << "Error: Se requieren los nombres de los archivos de entrada y salida." << std::endl;
-        return EXIT_FAILURE;
+    ifstream inputFile;
+    ofstream outputFile;
+
+    if (argc != 3) {
+        cout << "usage: " << argv[0] << " input_file output_file\n";
+        return -1;
     }
 
-    std::string inputFilename = argv[1];
-    std::string outputFilename = argv[2];
+    inputFile.open(argv[1]);
+    if (!inputFile.is_open()) {
+        cout << argv[0] << ": File \"" << argv[1] << "\" not found\n";
+        return -1;
+    }
 
-    std::vector<Customer*> Customers;
-    std::vector<Operator*> Operators;
-    int numEvents;
-    std::vector<std::string> events;
+    outputFile.open(argv[2]);
+    if (!outputFile.is_open()) {
+        cout << argv[0] << ": Unable to create output file \"" << argv[2] << "\"\n";
+        return -1;
+    }
 
-    readInputFile(inputFilename, Customers, Operators, numEvents, events);
+    vector<Customer*> customers;
+    vector<Operator*> operators;
 
-    // Procesar eventos
-    for (int i = 0; i < numEvents; ++i) {
-        std::istringstream ss(events[i]);
-        int eventType;
-        ss >> eventType;
+    int C, O, N;
+    inputFile >> C >> O >> N;
 
-        if (eventType == 1) {
-            std::string name;
-            int age, OperatorId;
-            double limitingAmount;
-            ss >> name >> age >> OperatorId >> limitingAmount;
-            Customers.push_back(new Customer(Customers.size(), name, age, Operators[OperatorId], limitingAmount));
-        } else if (eventType == 2) {
-            int opType;
-            double talkingCharge, messageCost, networkCharge, discountRate;
-            ss >> opType >> talkingCharge >> messageCost >> networkCharge >> discountRate;
-            if (opType == 1) {
-                Operators.push_back(new VoxOperator(Operators.size(), talkingCharge, messageCost, networkCharge, (int)discountRate, "VOX"));
-            } else if (opType == 2) {
-                Operators.push_back(new InternetOperator(Operators.size(), talkingCharge, messageCost, networkCharge, (int)discountRate, "INTERNET"));
-            }
-        } else if (eventType == 3) {
-            int idCustomer1, idCustomer2, time;
-            ss >> idCustomer1 >> idCustomer2 >> time;
-            Customers[idCustomer1]->talk(time, *Customers[idCustomer2]);
-        } else if (eventType == 4) {
-            int idCustomer1, idCustomer2, quantity;
-            ss >> idCustomer1 >> idCustomer2 >> quantity;
-            Customers[idCustomer1]->message(quantity, *Customers[idCustomer2]);
-        } else if (eventType == 5) {
-            int idCustomer;
-            double amount;
-            ss >> idCustomer >> amount;
-            Customers[idCustomer]->connection(amount);
-        } else if (eventType == 6) {
-            int idCustomer;
-            double amount;
-            ss >> idCustomer >> amount;
-            Customers[idCustomer]->getBill()->pay(amount);
-        } else if (eventType == 7) {
-            int idCustomer, idOperator;
-            ss >> idCustomer >> idOperator;
-            Customers[idCustomer]->setOperator(Operators[idOperator]);
-        } else if (eventType == 8) {
-            int idCustomer;
-            double amount;
-            ss >> idCustomer >> amount;
-            Customers[idCustomer]->getBill()->changeTheLimit(amount);
+    customers.resize(C);
+    operators.resize(O);
+
+    int idClient = 0;
+    int idOperator = 0;
+    int age,operatorId;
+    double limit;
+    string name;
+    int opType;
+    OperatorType type;
+    double talkingCharge, messageCost, networkCharge, discountRate;
+    Operator* op;
+    Customer* customer;
+    //case 3
+    int id1, id2, time;
+    //Customer* customer1 = customers[id1];
+    //Customer* customer2 = customers[id2];
+    //case 4
+    int quantity;
+   // Customer* customer1 = customers[id1];
+   // Customer* customer2 = customers[id2];
+    //case 5
+    int id, amount;
+   // Customer* customer = customers[id];
+    //case 6
+    //int id;
+    //Customer* customer = customers[id];
+    //double amount;
+    //case 7
+    int idCustomer;
+   // Customer* customer = customers[id1];
+    //Operator* newOperator = operators[id2];
+    //case 8
+    //int id, amount;
+    //Customer* customer = customers[id];
+    // Leer operaciones
+    for (int i = 0; i < N; ++i) {
+        cout<<"indice: "<<i<<endl;
+        int operationType;
+        inputFile >> operationType;
+        cout<<"operationtype:"<<operationType<<endl;
+        switch (operationType) {
+            case 1:
+                inputFile >> name >> age >> operatorId >> limit;
+                cout<<"nombre:"<<name<<" "<<"edad:"<<age<<" "<<"operator:"<<operatorId<<" "<<"limite:"<<limit<<endl;
+                customer = new Customer(idClient, name, age, operators[operatorId], limit);
+                customers[idClient] = customer;
+                cout << "customer " << idClient << customers[idClient]->toString() << "\n";
+                idClient++;
+                break;
+            case 2:
+                inputFile >> opType >> talkingCharge >> messageCost >> networkCharge >> discountRate;
+                cout<<"tipo de operador:"<<opType<<" "<<"cargo de llamada"<<talkingCharge<<" "<<"cargo de mensaje:"<<messageCost<<" "<<"cargo de internet:"<<networkCharge<<"descuento: "<<discountRate<<endl;
+                if (opType == 1){
+                    op = new VoxOperator(idOperator, talkingCharge, messageCost, networkCharge, discountRate,type);
+                    cout << "op = " << op->toString() << "\n";
+                    operators[idOperator] = op;
+                    cout << "operator = " << operators[idOperator]->toString() << "\n";
+                }    
+                else if (opType == 2){
+                    op = new InternetOperator(idOperator, talkingCharge, messageCost, networkCharge, discountRate,type);
+                    cout << "op = " << op->toString() << "\n";
+                    operators[idOperator] = op;
+                    cout << "operator = " << operators[idOperator]->toString() << "\n";
+                }
+                idOperator++;
+                break;
+            case 3: 
+                inputFile >> id1 >> id2 >> time;
+                // Realizar operación de llamada entre clientes
+                customers[id1]->talk(time, *customers[id2]);
+                break;
+            case 4: 
+                inputFile >> id1 >> id2 >> quantity;
+                // Realizar operación de envío de mensajes entre clientes
+                customer[id1]->message(quantity, *customer[id2]);
+                break;
+            case 5: 
+                
+                inputFile >> id >> amount;
+                // Realizar operación de conexión a internet por parte del cliente
+                customer->connection(amount);
+                break;
+            case 6: 
+                
+                inputFile >> id >> amount;
+                customer->pay(amount);
+                break;
+            case 7: 
+                
+                inputFile >> id1 >> id2;
+                customer->setOperator(newOperator);
+                break;
+            case 8: 
+                
+                inputFile >> id >> amount;
+                customer->getBill()->changeTheLimit(amount);
+                break;
+            default:
+                break;
         }
     }
 
-    writeOutputFile(outputFilename, Customers, Operators);
+    // Calcular y escribir resultados en el archivo de salida
 
-    // Liberar memoria
-    for (size_t i = 0; i < Customers.size(); ++i) {
-        delete Customers[i];
+    // Calcular y escribir resultados en el archivo de salida
+
+// Imprimir estadísticas de los operadores
+
+cout << "imprime los operadores"<<endl;
+for (auto& op : operators) {
+    cout << "op = " << op << "\n";
+    outputFile << "Operator " << op->getId() << ": " << op->getTotalSpentTalkingTime() << " "
+               << op->getTotalMessageSent() << " " << op->getTotalInternetUsage() << "\n";
+}
+
+// Imprimir estadísticas de los clientes
+for (auto& customer : customers) {
+    outputFile << "Customer " << customer->getId() << ": " << customer->getBill()->getTotalMoneySpent() << " "
+               << customer->getBill()->getCurrentDebt() << "\n";
+}
+
+// Encontrar y imprimir el cliente que más habla
+Customer* topTalker = nullptr;
+for (auto& customer : customers) {
+    if (!topTalker || customer->getTotalSpentTalkingTime() > topTalker->getTotalSpentTalkingTime() ||
+        (customer->getTotalSpentTalkingTime() == topTalker->getTotalSpentTalkingTime() && customer->getId() < topTalker->getId())) {
+        topTalker = customer;
     }
-    for (size_t i = 0; i < Operators.size(); ++i) {
-        delete Operators[i];
+}
+if (topTalker) {
+    outputFile << topTalker->getName() << ": " << topTalker->getTotalSpentTalkingTime() << "\n";
+}
+
+// Encontrar y imprimir el cliente que más mensajes envía
+Customer* topMessenger = nullptr;
+for (auto& customer : customers) {
+    if (!topMessenger || customer->getTotalMessageSent() > topMessenger->getTotalMessageSent() ||
+        (customer->getTotalMessageSent() == topMessenger->getTotalMessageSent() && customer->getId() < topMessenger->getId())) {
+        topMessenger = customer;
+    }
+}
+if (topMessenger) {
+    outputFile << topMessenger->getName() << ": " << topMessenger->getTotalMessageSent() << "\n";
+}
+
+// Encontrar y imprimir el cliente que más se conecta a Internet
+Customer* topInternetUser = nullptr;
+for (auto& customer : customers) {
+    if (!topInternetUser || customer->getTotalInternetUsage() > topInternetUser->getTotalInternetUsage() ||
+        (customer->getTotalInternetUsage() == topInternetUser->getTotalInternetUsage() && customer->getId() < topInternetUser->getId())) {
+        topInternetUser = customer;
+    }
+}
+if (topInternetUser) {
+    outputFile << topInternetUser->getName() << ": " << topInternetUser->getTotalInternetUsage() << "\n";
+}
+
+
+    // Liberar memoria de los apuntadores
+    for (auto& customer : customers) {
+        delete customer;
+    }
+    for (auto& op : operators) {
+        delete op;
     }
 
+    inputFile.close();
+    outputFile.close();
     return 0;
 }
